@@ -23,5 +23,5 @@ linkml-runtime = "<1.10"
 [pypi-dependencies]
 phenopackets = ">=2.0.2.post5, <3"
 click = ">=8.0"
-oaklib = ">=0.6"
+oaklib = ">=0.7.2"
 pytest = ">=9.0.2, <10"
