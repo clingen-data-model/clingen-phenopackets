@@ -114,6 +114,10 @@ For example: `gci_phenopackets/DSG2/DSG2_MONDO_0016587_16505173_Patient_1_abc123
 
 Ontologies (HP and Mondo) are downloaded on first run via oaklib's sqlite adapter and cached automatically by oaklib. Subsequent runs reuse the cached databases. GENO zygosity terms are hardcoded in `transformer.py` and do not require a download.
 
+oaklib (>=0.7.2) downloads the latest release from `https://semanticsql.berkeleybop.io` and re-downloads cached databases older than one week, so the HP/Mondo release used can change between runs. The release actually loaded is logged at startup (`Ontologies loaded: HP 2026-09-01, Mondo 2026-09-01`) and recorded in each phenopacket's `metaData.resources[].version`.
+
+**Wishlist:** pinnable ontology versions — expose `GCITransformer`'s `hp_selector` / `mondo_selector` as CLI options so a run can use a specific local `sqlite:/path/to/hp.db` instead of the latest release.
+
 ## Allele Registry Variant Cache
 
 The pipeline calls the [ClinGen Allele Registry](https://reg.genome.network) to enrich the `VariationDescriptor` with:

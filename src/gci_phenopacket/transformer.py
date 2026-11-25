@@ -1,4 +1,5 @@
 # src/gci_phenopacket/transformer.py
+import copy
 import math
 import re
 import logging
@@ -31,6 +32,21 @@ RESOURCE_METADATA = [
     pps2.Resource(id="geno",  name="Genotype Ontology",               namespace_prefix="GENO",  url="http://purl.obolibrary.org/obo/geno.owl"),
     pps2.Resource(id="eco",   name="Evidence and Conclusion Ontology",namespace_prefix="ECO",   url="https://evidenceontology.org/repo/ECO.owl", iri_prefix="http://purl.obolibrary.org/obo/ECO_"),
 ]
+
+RELEASE_DATE_RE = re.compile(r"/releases/([^/]+)/")
+
+
+def ontology_version(adapter) -> str | None:
+    """Release version of the adapter's ontology, from owl:versionIRI (else owl:versionInfo)."""
+    for ont in adapter.ontologies():
+        meta = adapter.ontology_metadata_map(ont)
+        for iri in meta.get("owl:versionIRI", []):
+            if m := RELEASE_DATE_RE.search(iri):
+                return m.group(1)
+        if info := meta.get("owl:versionInfo"):
+            return info[0]
+    return None
+
 
 @dataclass
 class GCIRecordContext:
@@ -75,7 +91,17 @@ class GCITransformer:
         LOGGER.info("Initializing Ontologies (Checking Cache/Remote)...")
         self._hpo = get_adapter(hp_selector)
         self._mondo = get_adapter(mondo_selector)
-        LOGGER.info("Ontologies successfully loaded and indexed.")
+        versions = {"hp": ontology_version(self._hpo), "mondo": ontology_version(self._mondo)}
+        self.resources = []
+        for resource in RESOURCE_METADATA:
+            resource = copy.deepcopy(resource)
+            if resource.id in versions:
+                if versions[resource.id]:
+                    resource.version = versions[resource.id]
+                else:
+                    LOGGER.warning(f"Could not determine {resource.name} version")
+            self.resources.append(resource)
+        LOGGER.info(f"Ontologies loaded: HP {versions['hp']}, Mondo {versions['mondo']}")
         self.stats = GCITransformerStats()
         self.preserve_freetext = preserve_freetext
         self.allele_registry_client = allele_registry_client
@@ -203,7 +229,7 @@ class GCITransformer:
             ext_refs.append(pps2.ExternalReference(id=provenance_id))
         meta_data = pps2.MetaData(
             created=ts,
-            resources=list(RESOURCE_METADATA),
+            resources=self.resources,
             phenopacket_schema_version="2.0",
             external_references=ext_refs,
         )
