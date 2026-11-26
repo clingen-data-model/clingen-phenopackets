@@ -670,3 +670,73 @@ def test_gci_fallback_xrefs_clinvar():
 
 def test_gci_fallback_xrefs_empty_when_no_ids():
     assert _build_xrefs_from_gci({}) == []
+
+
+# ---------------------------------------------------------------------------
+# otherPMIDs → metadata.external_references (first iteration: individual only)
+# ---------------------------------------------------------------------------
+
+def _ext_refs(pp):
+    return [(r.id, r.description) for r in pp.meta_data.external_references]
+
+
+def test_other_pmids_string_form_appended_after_provenance():
+    ind = _base_individual()
+    ind["otherPMIDs"] = ["111", "222"]
+    prov = build_gci_provenance_id("gdm-abc", "uuid-123")
+    pp = _transformer().build_phenopacket(CTX, ANN_CTX, ind, provenance_id=prov)
+    assert _ext_refs(pp) == [
+        ("PMID:99", "T"),
+        ("gdm:gdm-abc-individual:uuid-123", ""),
+        ("PMID:111", ""),
+        ("PMID:222", ""),
+    ]
+
+
+def test_other_pmids_article_object_form_uses_title():
+    ind = _base_individual()
+    ind["otherPMIDs"] = [{"pmid": "333", "title": "Other paper", "@id": "/articles/333/"}]
+    pp = _transformer().build_phenopacket(CTX, ANN_CTX, ind)
+    assert ("PMID:333", "Other paper") in _ext_refs(pp)
+
+
+def test_other_pmids_skips_main_pmid_and_duplicates():
+    ind = _base_individual()
+    ind["otherPMIDs"] = ["99", "111", {"pmid": "111", "title": "dup"}, "111"]
+    pp = _transformer().build_phenopacket(CTX, ANN_CTX, ind)
+    assert [i for i, _ in _ext_refs(pp)] == ["PMID:99", "PMID:111"]
+
+
+def test_other_pmids_missing_or_empty_adds_nothing():
+    for value in (None, []):
+        ind = _base_individual()
+        if value is not None:
+            ind["otherPMIDs"] = value
+        pp = _transformer().build_phenopacket(CTX, ANN_CTX, ind)
+        assert [i for i, _ in _ext_refs(pp)] == ["PMID:99"]
+
+
+def test_other_pmids_family_level_not_inherited_by_member():
+    member = _base_individual()
+    member["otherPMIDs"] = ["9147877"]
+    record = {
+        "uuid": REC_UUID,
+        "resourceParent": {"gdm": {
+            "uuid": "gdm-abc",
+            "gene": {"symbol": "DSG2", "hgncId": "HGNC:3049"},
+            "annotations": [{
+                "uuid": ANN_UUID,
+                "article": {"pmid": "11001585", "title": "Main"},
+                "families": [{
+                    "uuid": "fam-1",
+                    "otherPMIDs": ["10205272"],
+                    "individualIncluded": [member],
+                }],
+            }],
+        }},
+    }
+    pps = list(_transformer().phenopackets_from_gci_record(record))
+    assert len(pps) == 1
+    ids = [i for i, _ in _ext_refs(pps[0])]
+    assert "PMID:9147877" in ids
+    assert "PMID:10205272" not in ids

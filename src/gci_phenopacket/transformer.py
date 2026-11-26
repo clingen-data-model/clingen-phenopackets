@@ -227,6 +227,7 @@ class GCITransformer:
         ext_refs = [pps2.ExternalReference(id=f"PMID:{ann_ctx.pmid}", description=ann_ctx.title)]
         if provenance_id:
             ext_refs.append(pps2.ExternalReference(id=provenance_id))
+        ext_refs.extend(build_other_pmid_references(individual, ann_ctx.pmid))
         meta_data = pps2.MetaData(
             created=ts,
             resources=self.resources,
@@ -361,6 +362,33 @@ def build_subject(pmid: str, label: str, individual: dict) -> pps2.Individual:
         kwargs["time_at_last_encounter"] = age_result
 
     return pps2.Individual(**kwargs)
+
+
+def build_other_pmid_references(individual: dict, main_pmid: str) -> list[pps2.ExternalReference]:
+    """Build PMID ExternalReferences from the individual's own `otherPMIDs`.
+
+    First iteration: only the individual's `otherPMIDs` are used. Family- and
+    group-level `otherPMIDs` are intentionally skipped, since they describe the
+    family/group rather than this individual. These references are not added to
+    phenotype evidence. Both choices are pending further discussion.
+
+    GCI stores entries either as plain PMID strings or as embedded article dicts;
+    only the latter carry a title, used as the description. PubMed is not queried.
+    The main PMID and repeated PMIDs are skipped.
+    """
+    refs = []
+    seen = {str(main_pmid)}
+    for entry in individual.get("otherPMIDs") or []:
+        if isinstance(entry, dict):
+            pmid, title = str(entry.get("pmid") or ""), entry.get("title") or ""
+        else:
+            match = re.search(r"\d+", str(entry))
+            pmid, title = (match.group() if match else ""), ""
+        if not pmid or pmid in seen:
+            continue
+        seen.add(pmid)
+        refs.append(pps2.ExternalReference(id=f"PMID:{pmid}", description=title))
+    return refs
 
 
 def _make_evidence(pmid: str, article_title: str) -> pps2.Evidence:
